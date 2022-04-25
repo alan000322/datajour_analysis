@@ -1,0 +1,452 @@
+---
+title: "R10342008_新聞所碩一_何家慈-Midterm-Assignment"
+author: "新聞所碩一_何家慈"
+date: "2022/4/25"
+output:
+  html_document:
+    number_sections: no
+    theme: united
+    highlight: tango
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+options(stringsAsFactors = F)
+options(scipen = 999)
+library(tidyverse)
+library(lubridate)
+
+
+### 繪圖字型處理
+##### From Teacher's Code
+#th <- 
+#  theme(title = element_text(family="Heiti TC Light"),
+#        text = element_text(family="Heiti TC Light"), 
+#        axis.text.y = element_text(family="PingFang TC"),
+#        axis.text.x = element_text(family="Heiti TC Light"),
+#        legend.text = element_text(family="Heiti TC Light"),
+#        plot.title = element_text(family="Heiti TC Light")
+#        )
+
+##### From My Own
+
+library(showtext)
+showtext.auto(enable = TRUE)
+font_add("jf-openhuninn", "jf-openhuninn-1.1.ttf")
+font_add("GenJyuuGothicL-Medium", "GenJyuuGothicL-Medium.ttf")
+font_add("GenJyuuGothicL-P-Bold", "GenJyuuGothicL-P-Bold.ttf")
+
+
+th <- 
+  theme(plot.title = element_text(family="GenJyuuGothicL-P-Bold"),
+        plot.subtitle = element_text(family="GenJyuuGothicL-Medium"),
+        text = element_text(family="jf-openhuninn"), 
+        axis.text.y = element_text(family="jf-openhuninn"),
+        axis.text.x = element_text(family="jf-openhuninn"),
+        legend.text = element_text(family="jf-openhuninn"),
+        )
+
+```
+
+# 資料簡述
+## 點出該資訊圖表的敘事方式
+> 例如，其如何透過圖表選擇、座標軸的選擇、顏色的採用、圖表上的標記來凸顯其新聞敘事。以RMD撰寫、輸出為HTML。
+
+該篇文章是要探討歷年來（2001年至2017年）全美國（整體）及美國各州（局部）的發電燃料來源，畫出stacked area plot，此外會依照比例由高至低排，因此可以看到報導圖中，若有某種發電燃料來源比例激增，該區塊變會竄升至圖表上方，反之亦然。這樣的操作可有助於了解每個發電燃料來源在該年度的發電占比，以及歷年來的升降幅度。
+
+顏色採用部分，NYT似乎有盡量採用該燃料「類似」的顏色，如Coal（煤炭）使用土灰色、水力發電使用淺藍色等，但也只是大致如此。
+
+座標軸部分，橫軸使用年度，縱軸使用「發電占比」，因此此系列圖僅能比較並瞭解各年度、各個發電燃料來源於整體之間的佔比，不能了解總體發電「量」的多寡。
+
+此外，透過網頁敘事手法的疊圖，更能「動態」比較各州發電比例。
+NYT網頁：https://www.nytimes.com/interactive/2018/12/24/climate/how-electricity-generation-changed-in-your-state.html
+![](https://i.imgur.com/QZM507Y.png)
+
+本份資料視覺化作業，僅能製作area plot，還無法製作如上述這種依照名次比例排序的功能。
+
+## 台灣v.s.美國資料差異
+本次找到的台灣的資料是從政府開放資料下載而來，有每個月的發電資料，然而因為台灣的發電有分台電本身（發電業）及自用發電設備，因此資料還需要加以處理（數值相加），此外，該表除了「供給量」，其實也有「發電需求量」的欄位，也是一個值得使用的欄位，只是並非本次討論範圍之中。
+
+美國資料同樣也有每個月的發電資料，且單位也與台灣使用的相同（1000MWh = 百萬度），但是美國因為幅員遼闊，可能以各州之發電燃料來源之資料可能較有新聞意義。
+
+# 資料處理與視覺化 - 美國資料
+資料來源：https://www.eia.gov/electricity/data/browser/
+## 資料前處理
+```{r}
+raw_us <- read_csv("US_elec.csv")
+names(raw_us)
+cleaned_us <- raw_us %>%
+  drop_na() %>% 
+  select(
+    time     = Month,
+    coal     = `coal thousand megawatthours`,
+    gas      = `natural gas thousand megawatthours`,
+    nuclear  = `nuclear thousand megawatthours`,
+    water    = `conventional hydroelectric thousand megawatthours`,
+    wind     = `wind thousand megawatthours`,
+    solar    = `all solar thousand megawatthours`
+  ) %>%
+  mutate(
+    month = substr(time, 1,3),
+    year  = substr(time, 5,8)
+  ) %>%
+  gather(
+    key="energy source",
+    value="electricity production",
+    coal, gas,  nuclear, solar, wind, water
+  ) %>% 
+  arrange(year, month) %>%
+  group_by(year, `energy source`) %>%
+  summarize(
+    `electricity production` = round( mean(`electricity production`), 1),
+    n = sum(`electricity production`)
+  )%>%
+  mutate(percentage = round(100* n / sum(n), 1) ) %>%
+  ungroup() %>%
+  select(
+    year, `energy source`, `electricity production`, percentage
+  ) %>%
+  mutate(year=as.integer(year))
+cleaned_us
+```
+## 繪圖
+### 繪製發電量圖 - area plot
+```{r}
+cleaned_us %>%
+  ggplot() + 
+  aes(
+    x = year,
+    y = `electricity production`,
+    fill  = `energy source`
+  ) +
+  geom_area() +
+  labs(title = "美國歷年電力供給資訊：電力燃料來源發電量",
+         subtitle = "資料來源：美國能源資訊管理局",
+         x = "年",
+         y = "發電量（百萬度）",
+       ) +
+  scale_fill_manual(
+    name="發電方式",
+    #guide = TRUE,
+    label = c(
+      'coal'       =  "燃煤", 
+      'gas'        =  "燃氣",
+      'nuclear'    =  "核能",
+      'solar'      =  "太陽能",
+      'water'      =  "水力",
+      'wind'       =  "風力"
+    ),
+    values= c(
+      'coal'       =  "#616130", 
+      'gas'        =  "#EA7500",
+      'nuclear'    =  "#9F4D95",
+      'solar'      =  "#FF9797",
+      'water'      =  "#97CBFF",
+      'wind'       =  "#95CACA"
+    ),
+  ) +
+  ### 圖表主題
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size=18),
+    plot.subtitle = element_text(size=13),
+    legend.position="right",
+    legend.background = element_rect(colour = 'black', fill = 'white', linetype='solid'),
+    #legend.title = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line.x = element_line(colour = "black"),
+    axis.text.x = element_text(size=6),
+    axis.line.y = element_line(colour = "black"),
+
+  ) + th
+```
+
+### 繪製發電量比例圖 - area plot
+```{r}
+cleaned_us %>%
+  ggplot() +
+  aes(
+    x = year, 
+    y = percentage, 
+    fill=`energy source`,
+    #labels='a'
+  ) +
+  geom_area(
+    alpha = 0.8,
+    size = 0.5,
+    color = "white"
+  ) +
+  labs(title = "美國歷年電力供給資訊：電力燃料來源發電量佔比",
+         subtitle = "資料來源：美國能源資訊管理局",
+         x = "年",
+         y = "發電量佔比（%）",
+       ) +
+  scale_y_continuous( breaks = seq(0,100,5), limits = c(0, 105) ) + 
+  scale_fill_manual(
+    name="發電方式",
+    #guide = TRUE,
+    label = c(
+      'coal'       =  "燃煤", 
+      'gas'        =  "燃氣",
+      'nuclear'    =  "核能",
+      'solar'      =  "太陽能",
+      'water'      =  "水力",
+      'wind'       =  "風力"
+    ),
+    values= c(
+      'coal'       =  "#616130", 
+      'gas'        =  "#EA7500",
+      'nuclear'    =  "#9F4D95",
+      'solar'      =  "#FF9797",
+      'water'      =  "#97CBFF",
+      'wind'       =  "#95CACA"
+    ),
+  ) +
+  ### 圖表主題
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size=18),
+    plot.subtitle = element_text(size=13),
+    legend.position="right",
+    legend.background = element_rect(colour = 'black', fill = 'white', linetype='solid'),
+    #legend.title = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line.x = element_line(colour = "black"),
+    axis.text.x = element_text(size=6),
+    axis.line.y = element_line(colour = "black"),
+
+  ) + th
+  
+```
+資料整理後可發現，美國資料相對於下方台灣資料，僅有數個發電類別，且無法呈現各州差異性。
+此外，可以看到燃煤發電之總發電量佔比逐年降低，燃氣發電之總發電量佔比逐年提高，然該篇報導也指出，燃氣發電僅能作為過渡時期使用，因燃氣發電仍相較於綠能等方式發電，仍屬於較高污染之發電方式。
+
+
+
+# 資料處理與視覺化 - 台灣資料
+## 資料前處理
+### 讀檔案、為每個欄位取英文名稱
+```{r}
+raw <- read_csv("elec.csv")
+raw <- raw %>%
+  select(
+    time = `日期(年/月)`,
+    total_elec      = 總發電量,
+    elec            = 總發電量_發電業,
+    pump            = 總發電量_發電業_抽蓄水力,
+    fire_all        = 總發電量_發電業_火力,
+    fire_coal       = 總發電量_發電業_火力_燃煤,
+    fire_oil        = 總發電量_發電業_火力_燃油,
+    fire_gas        = 總發電量_發電業_火力_燃氣,
+    nuclear         = 總發電量_發電業_核能,
+    green_all       = 總發電量_發電業_再生能源,
+    green_water     = 總發電量_發電業_再生能源_慣常水力,
+    green_floor     = 總發電量_發電業_再生能源_地熱,
+    green_sun       = 總發電量_發電業_再生能源_太陽光電,
+    green_wind      = 總發電量_發電業_再生能源_風力,
+    own             = 總發電量_自用發電設備,
+    own_fire_all    = 總發電量_自用發電設備_火力,
+    own_fire_coal   = 總發電量_自用發電設備_火力_燃煤,
+    own_fire_oil    = 總發電量_自用發電設備_火力_燃油,
+    own_fire_gas    = 總發電量_自用發電設備_火力_燃氣,
+    own_green_all   = 總發電量_自用發電設備_再生能源,
+    own_green_floor = 總發電量_自用發電設備_再生能源_地熱,
+    own_green_sun   = 總發電量_自用發電設備_再生能源_太陽光電,
+    own_green_wind  = 總發電量_自用發電設備_再生能源_風力,
+    own_green_bioe  = 總發電量_自用發電設備_再生能源_生質能,
+    own_green_trash = 總發電量_自用發電設備_再生能源_廢棄物
+    
+    
+  )
+
+```
+
+## 重新整理表格
+因為原先的表格中，會將公有發電與私有發電分開，我們須依照「發電種類」做分別，因此做一些調整，如太陽能發電有分公有與自營，就會將兩者相加。
+```{r}
+cleaned <- raw %>%
+  mutate(
+    year        = as.character(time) %>% substr(1,4) %>% as.integer() , 
+    month       = as.character(time) %>% substr(5,6) %>% as.integer()  ,
+    YMtime      = paste(as.character(year), as.character(month), sep="-"),
+    coal        = fire_coal + own_fire_coal,
+    oil         = fire_oil  + own_fire_oil,
+    gas         = fire_gas  + own_fire_gas,
+    solar       = green_sun + own_green_sun,
+    wind        = green_wind + own_green_wind,
+    geothermal  = green_floor + own_green_floor,
+    water       = green_water
+  ) %>% 
+  select(
+    year, month, YMtime, coal, oil, gas, pump, nuclear, solar, wind, geothermal, water
+  )
+```
+
+## 繪製長表格
+利用```gather```函數繪製長表格，並將每個年度進行年平均，作為該年度的數據，並計算電力個發電種類發電量比例。
+```{r}
+cleaned_gather <- cleaned %>%
+  gather(
+    key="energy source",
+    value="electricity production",
+    coal, oil, gas, pump, nuclear, solar, wind, geothermal, water
+  ) %>% 
+  arrange(year, month) %>%
+  group_by(year, `energy source`) %>%
+  summarize(
+    `electricity production` = round( mean(`electricity production`), 1),
+    n = sum(`electricity production`)
+  )%>%
+  mutate(percentage = round(100* n / sum(n), 1) ) %>%
+  ungroup() %>%
+  select(
+    year, `energy source`, `electricity production`, percentage
+  ) 
+
+# 把2022年資料去掉
+cleaned_gather <- cleaned_gather %>% 
+  head(nrow(cleaned_gather)-9)
+```
+
+## 畫圖
+### 繪製發電量圖 - area plot
+```{r}
+cleaned_gather %>%
+  ggplot() + 
+  aes(
+    x = year,
+    y = `electricity production`,
+    fill  = `energy source`
+  ) +
+  geom_area() +
+  labs(title = "臺灣歷年電力供給資訊：電力燃料來源發電量",
+         subtitle = "資料來源：經濟部能源局 電力供需表",
+         x = "年",
+         y = "發電量（百萬度）",
+       ) +
+  scale_fill_manual(
+    name="發電方式",
+    #guide = TRUE,
+    label = c(
+      'coal'       =  "燃煤", 
+      'gas'        =  "燃氣",
+      'nuclear'    =  "核能",
+      'oil'        =  "燃油",
+      'pump'       =  "抽蓄",
+      'solar'      =  "太陽能",
+      'water'      =  "水力",
+      'wind'       =  "風力",
+      'geothermal' =  "地熱"
+    ),
+    values= c(
+      'coal'       =  "#616130", 
+      'gas'        =  "#EA7500",
+      'nuclear'    =  "#9F4D95",
+      'oil'        =  "#FFC1E0",
+      'pump'       =  "#FFED97",
+      'solar'      =  "#FF9797",
+      'water'      =  "#97CBFF",
+      'wind'       =  "#95CACA",
+      'geothermal' =  "#E0E0E0"
+    ),
+  ) +
+  ### 圖表主題
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size=18),
+    plot.subtitle = element_text(size=13),
+    legend.position="right",
+    legend.background = element_rect(colour = 'black', fill = 'white', linetype='solid'),
+    #legend.title = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line.x = element_line(colour = "black"),
+    axis.text.x = element_text(size=6),
+    axis.line.y = element_line(colour = "black"),
+
+  ) + th
+```
+
+### 繪製發電量比例圖 - area plot
+```{r}
+cleaned_gather %>%
+  ggplot() +
+  aes(
+    x = year, 
+    y = percentage, 
+    fill=`energy source`,
+    #labels='a'
+  ) +
+  geom_area(
+    alpha = 0.8,
+    size = 0.5,
+    color = "white"
+  ) +
+  labs(title = "臺灣歷年電力供給資訊：電力燃料來源發電量佔比",
+         subtitle = "資料來源：經濟部能源局 電力供需表",
+         x = "年",
+         y = "發電量佔比（%）",
+       ) +
+  scale_y_continuous( breaks = seq(0,100,5), limits = c(0, 105) ) + 
+  scale_fill_manual(
+    name="發電方式",
+    #guide = TRUE,
+    label = c(
+      'coal'       =  "燃煤", 
+      'gas'        =  "燃氣",
+      'nuclear'    =  "核能",
+      'oil'        =  "燃油",
+      'pump'       =  "抽蓄",
+      'solar'      =  "太陽能",
+      'water'      =  "水力",
+      'wind'       =  "風力",
+      'geothermal' =  "地熱"
+    ),
+    values= c(
+      'coal'       =  "#616130", 
+      'gas'        =  "#EA7500",
+      'nuclear'    =  "#9F4D95",
+      'oil'        =  "#FFC1E0",
+      'pump'       =  "#FFED97",
+      'solar'      =  "#FF9797",
+      'water'      =  "#97CBFF",
+      'wind'       =  "#95CACA",
+      'geothermal' =  "#E0E0E0"
+    ),
+  ) +
+  ### 圖表主題
+  theme_minimal() + 
+  theme(
+    plot.title = element_text(size=18),
+    plot.subtitle = element_text(size=13),
+    legend.position="right",
+    legend.background = element_rect(colour = 'black', fill = 'white', linetype='solid'),
+    #legend.title = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line.x = element_line(colour = "black"),
+    axis.text.x = element_text(size=6),
+    axis.line.y = element_line(colour = "black"),
+
+  ) + th
+  
+```
+資料整理後可發現，台灣資料提供較多發電類別資訊。
+值得一提，台灣從2020年至今，每年總發電量逐年攀升，與美國總發電量持平有所差異。
+另外，可以看到燃煤發電之總發電量佔比近年來逐年微幅降低，燃氣發電之總發電量佔比逐年提高（與美國同），然而台灣的核能發電近年來佔比逐年降低，太陽能發電佔比逐年提高，應與當前蔡英文政府w推動之能源政策有關（燃氣50%-燃煤30%-綠能20%）。
+
+```{r}
+save(raw, cleaned, cleaned_gather, file = "elecData_tw.rda")
+save(raw_us, cleaned_us, file = "elecData_us.rda")
+
+```
+
