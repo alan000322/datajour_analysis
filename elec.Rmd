@@ -300,17 +300,13 @@ cleaned_gather <- cleaned %>%
     value="electricity production",
     coal, oil, gas, pump, nuclear, solar, wind, geothermal, water
   ) %>% 
-  arrange(year, month) %>%
+  arrange(year, month) %>% 
   group_by(year, `energy source`) %>%
   summarize(
-    `electricity production` = round( mean(`electricity production`), 1),
-    n = sum(`electricity production`)
+    `electricity production` = round( mean(`electricity production`), 1)
   )%>%
-  mutate(percentage = round(100* n / sum(n), 1) ) %>%
-  ungroup() %>%
-  select(
-    year, `energy source`, `electricity production`, percentage
-  ) 
+  mutate(percentage = round(100* `electricity production` / sum(`electricity production`), 1) ) %>%
+  ungroup() 
 
 # 把2022年資料去掉
 cleaned_gather <- cleaned_gather %>% 
